@@ -84,16 +84,25 @@ public class Player : MonoBehaviour
 
     // ==================== 卡牌管理 ====================
 
-    // 添加卡牌到手牌
     public void AddCardToHand(GameObject card)
     {
         if (card == null) return;
 
         handCards.Add(card);
+
+        // 设置卡牌位置
+        if (handArea != null)
+        {
+            card.transform.SetParent(handArea, false);
+        }
+
         Debug.Log($"{playerName} 获得手牌: {card.name}, 当前手牌数: {handCards.Count}");
+
+        // 更新UI
+        UpdateCardCountUI();
     }
 
-    // 从手牌移除卡牌
+    // 从手牌移除卡牌(更新)
     public void RemoveCardFromHand(GameObject card)
     {
         if (card == null) return;
@@ -101,16 +110,50 @@ public class Player : MonoBehaviour
         if (handCards.Remove(card))
         {
             Debug.Log($"{playerName} 移除手牌: {card.name}, 剩余手牌数: {handCards.Count}");
+
+            // 更新UI
+            UpdateCardCountUI();
         }
     }
 
-    // 移动到墓地
+    // 移动到墓地（更新）
     public void MoveToGraveyard(GameObject card)
     {
         if (card == null) return;
 
         graveyard.Add(card);
+
+        // 设置卡牌位置
+        if (graveyardArea != null)
+        {
+            card.transform.SetParent(graveyardArea, false);
+        }
+
         Debug.Log($"{playerName} 卡牌进入墓地: {card.name}, 墓地卡牌数: {graveyard.Count}");
+
+        // 更新UI
+        UpdateCardCountUI();
+    }
+
+    // 更新卡牌计数UI
+    void UpdateCardCountUI()
+    {
+        if (isHumanPlayer)
+        {
+            UIManager.Instance?.UpdatePlayerCardCount(
+                handCards.Count,
+                20, // 假设卡组20张（应该从CardManager获取）
+                graveyard.Count
+            );
+        }
+        else
+        {
+            UIManager.Instance?.UpdateEnemyCardCount(
+                handCards.Count,
+                20,
+                graveyard.Count
+            );
+        }
     }
 
     // ==================== 工具方法 ====================

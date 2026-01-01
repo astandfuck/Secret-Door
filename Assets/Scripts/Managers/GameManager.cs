@@ -26,6 +26,7 @@ public class GameManager : MonoBehaviour
     // 游戏状态
     [Header("游戏状态")]
     public GameState currentState = GameState.None;
+    public bool isBattlePhase = false;  // 改为public
 
     // 游戏设置
     [Header("游戏设置")]
@@ -36,12 +37,19 @@ public class GameManager : MonoBehaviour
     [Header("调试")]
     public bool debugMode = true;
 
+    // 卡牌管理器引用
+    [Header("卡牌管理")]
+    public CardManager cardManager;
+
+    [Header("卡牌位置 - 2x5网格")]
+    public CardSlot[] playerSlots;  // 玩家10个位置 - 确保这行存在
+    public CardSlot[] enemySlots;   // 敌方10个位置
+
     // 私有变量
-    private bool isBattlePhase = false;
     private int currentTurn = 1;
 
     // ==================== Unity生命周期 ====================
-
+  
     void Awake()
     {
         // 单例模式初始化
@@ -69,6 +77,7 @@ public class GameManager : MonoBehaviour
         DebugLog("游戏开始初始化...");
         InitializeGame();
     }
+
 
     void Update()
     {
@@ -101,21 +110,204 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // ==================== 卡牌相关方法 ====================
+
+    // 初始化卡牌系统
+    void InitializeCardSystem()
+    {
+        DebugLog("初始化卡牌系统...");
+
+        // 获取或创建CardManager
+        cardManager = GetComponent<CardManager>();
+        if (cardManager == null)
+            cardManager = gameObject.AddComponent<CardManager>();
+
+        // 设置卡牌预制体引用
+        if (cardManager.cardPrefab == null)
+        {
+            // 需要在Inspector中手动设置
+            Debug.LogWarning("请手动设置CardManager的cardPrefab字段");
+        }
+        
+        Debug.Log($"CardManager reference: {cardManager}");
+        Debug.Log($"Card Prefab: {CardManager.Instance.cardPrefab}");
+        Debug.Log($"Card Prefab: {cardManager.test}");
+    }
+
+    // 初始抽牌
+    void DrawStartingHands()
+    {
+        DebugLog("开始初始抽牌...");
+
+        if (cardManager == null)
+        {
+            Debug.LogError("CardManager未初始化");
+            return;
+        }
+
+        // 玩家抽牌
+        for (int i = 0; i < startingHandSize; i++)
+        {
+            DrawCardForPlayer(player);
+            DrawCardForPlayer(enemy);
+        }
+    }
+
+    // 为玩家抽牌
+    void DrawCardForPlayer(Player targetPlayer)
+    {
+        if (targetPlayer == null || cardManager == null) return;
+
+        // 创建随机卡牌
+        GameObject cardObj = cardManager.CreateRandomCard(
+            targetPlayer.isHumanPlayer,
+            targetPlayer.isHumanPlayer ? playerHandArea : enemyHandArea
+        );
+
+        if (cardObj != null)
+        {
+            // 获取Card组件
+            Card card = cardObj.GetComponent<Card>();
+            if (card != null)
+            {
+                card.SetCardLocation(CardLocation.Hand);
+                card.isDraggable = targetPlayer.isHumanPlayer;
+            }
+
+            // 添加到玩家手牌
+            targetPlayer.AddCardToHand(cardObj);
+
+            DebugLog($"{targetPlayer.playerName} 抽到卡牌: {cardObj.name}");
+        }
+    }
+
+    // 每回合抽牌
+    void DrawCardForTurn(Player targetPlayer)
+    {
+        if (targetPlayer == null || cardManager == null) return;
+
+        // 检查手牌上限
+        if (targetPlayer.handCards.Count >= 7) // 假设最大手牌7张
+        {
+            DebugLog($"{targetPlayer.playerName} 手牌已满");
+            return;
+        }
+
+        DrawCardForPlayer(targetPlayer);
+    }
+
+    // 卡牌死亡事件处理
+    public void OnCardDied(Card deadCard)
+    {
+        if (deadCard == null) return;
+
+        DebugLog($"卡牌死亡: {deadCard.CardName}");
+
+        // 从卡槽中移除
+        CardSlot[] slots = deadCard.isPlayerCard ? playerSlots : enemySlots;
+        foreach (CardSlot slot in slots)
+        {
+            if (slot.currentCard == deadCard)
+            {
+                slot.RemoveCard();
+                break;
+            }
+        }
+
+        // 移动到墓地
+        Player owner = deadCard.isPlayerCard ? player : enemy;
+        owner.MoveToGraveyard(deadCard.gameObject);
+
+        // 回收卡牌到对象池
+        if (cardManager != null)
+        {
+            cardManager.ReturnCardToPool(deadCard.gameObject);
+        }
+    }
+
+    // 获取空卡槽
+    public CardSlot GetEmptyPlayerSlot()
+    {
+        if (playerSlots == null) return null;
+
+        foreach (CardSlot slot in playerSlots)
+        {
+            if (slot.IsEmpty())
+                return slot;
+        }
+        return null;
+    }
+
+    public CardSlot GetEmptyEnemySlot()
+    {
+        if (enemySlots == null) return null;
+
+        foreach (CardSlot slot in enemySlots)
+        {
+            if (slot.IsEmpty())
+                return slot;
+        }
+        return null;
+    }
+
+    // 获取所有卡牌（用于战斗阶段）
+    public List<Card> GetAllPlayerCards()
+    {
+        List<Card> cards = new List<Card>();
+
+        if (playerSlots != null)
+        {
+            foreach (CardSlot slot in playerSlots)
+            {
+                if (slot.currentCard != null)
+                    cards.Add(slot.currentCard);
+            }
+        }
+
+        return cards;
+    }
+
+    public List<Card> GetAllEnemyCards()
+    {
+        List<Card> cards = new List<Card>();
+
+        if (enemySlots != null)
+        {
+            foreach (CardSlot slot in enemySlots)
+            {
+                if (slot.currentCard != null)
+                    cards.Add(slot.currentCard);
+            }
+        }
+
+        return cards;
+    }
+
+    // 重置所有卡牌攻击状态
+    void ResetAllCardAttacks()
+    {
+        ResetCardAttacks(true);  // 玩家卡牌
+        ResetCardAttacks(false); // 敌方卡牌
+    }
+
+    void ResetCardAttacks(bool isPlayer)
+    {
+        CardSlot[] slots = isPlayer ? playerSlots : enemySlots;
+
+        foreach (CardSlot slot in slots)
+        {
+            if (slot.currentCard != null)
+            {
+                slot.currentCard.ResetAttackStatus();
+            }
+        }
+    }
     // ==================== 游戏初始化 ====================
 
+    // 更新InitializeGame方法
     void InitializeGame()
     {
         DebugLog("开始游戏初始化...");
-
-        // 检查玩家对象是否存在
-        if (player == null)
-        {
-            Debug.LogError("玩家对象未赋值！请检查Inspector");
-        }
-        if (enemy == null)
-        {
-            Debug.LogError("敌方对象未赋值！请检查Inspector");
-        }
 
         // 初始化玩家
         if (player != null)
@@ -130,15 +322,19 @@ public class GameManager : MonoBehaviour
             enemy.OnHealthChanged += OnEnemyHealthChanged;
         }
 
-        // 更新UI初始状态
+        // 初始化卡牌系统
+        InitializeCardSystem();
+
+        // 更新UI
         if (UIManager.Instance != null)
         {
             UIManager.Instance.UpdateGameState("游戏初始化");
-            UIManager.Instance.UpdateTurnInfo($"回合 {currentTurn}");
+            UIManager.Instance.UpdateTurnInfo($"回合 1");
             UIManager.Instance.UpdatePlayerHealth(player.health, player.maxHealth);
             UIManager.Instance.UpdateEnemyHealth(enemy.health, enemy.maxHealth);
         }
 
+        // 开始游戏
         StartCoroutine(GameStartRoutine());
     }
 
@@ -147,7 +343,6 @@ public class GameManager : MonoBehaviour
     {
         DebugLog("游戏开始协程启动");
 
-        // 等待一帧，确保所有组件加载完成
         yield return null;
 
         if (UIManager.Instance != null)
@@ -155,24 +350,26 @@ public class GameManager : MonoBehaviour
             UIManager.Instance.ShowMessage("游戏开始！", false);
         }
 
-        DebugLog("开始初始抽牌...");
+        // 抽起始手牌
+        DrawStartingHands();
+
         yield return new WaitForSeconds(1f);
 
         if (UIManager.Instance != null)
         {
             UIManager.Instance.ShowMessage($"双方各抽{startingHandSize}张牌", false);
         }
+
         yield return new WaitForSeconds(1f);
 
         DebugLog("初始抽牌完成，开始玩家回合");
-
-        // 开始第一个回合
         StartPlayerTurn();
     }
 
     // ==================== 回合管理 ====================
 
     // 开始玩家回合
+    // 更新StartPlayerTurn方法
     public void StartPlayerTurn()
     {
         if (currentState == GameState.GameOver)
@@ -186,6 +383,12 @@ public class GameManager : MonoBehaviour
 
         DebugLog($"=== 第{currentTurn}回合：玩家回合开始 ===");
 
+        // 抽牌
+        DrawCardForTurn(player);
+
+        // 重置卡牌攻击状态
+        ResetCardAttacks(true);
+
         // 更新UI
         if (UIManager.Instance != null)
         {
@@ -193,18 +396,13 @@ public class GameManager : MonoBehaviour
             UIManager.Instance.UpdateTurnInfo($"回合 {currentTurn} - 玩家行动");
             UIManager.Instance.SetEndTurnButton(true, "结束回合");
             UIManager.Instance.ShowMessage("你的回合，请放置卡牌", false);
-        }
 
-        // 模拟抽牌（第2天实现）
-        if (player != null && currentTurn == 1)
-        {
-            player.AddCardToHand(null); // 占位
-        }
-
-        // 模拟回合时间（调试用）
-        if (debugMode)
-        {
-            StartCoroutine(DebugTurnTimer());
+            // 更新卡牌计数
+            UIManager.Instance.UpdatePlayerCardCount(
+                player.handCards.Count,
+                cardManager?.GetDeckCardCount(true) ?? 20,  // 改为返回int的方法
+                player.graveyard.Count
+            );
         }
     }
 

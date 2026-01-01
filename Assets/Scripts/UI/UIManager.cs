@@ -35,6 +35,13 @@ public class UIManager : MonoBehaviour
     public Text gameOverText;
     public Button restartButton;
 
+    [Header("工具提示")]
+    public GameObject tooltipPanel;
+    public Text tooltipTitleText;
+    public Text tooltipDescriptionText;
+    public float tooltipOffsetX = 10f;
+    public float tooltipOffsetY = -10f;
+
     // 私有变量
     private Coroutine messageCoroutine;
 
@@ -84,6 +91,10 @@ public class UIManager : MonoBehaviour
             debugLoseButton.onClick.AddListener(OnDebugLoseClicked);
             debugLoseButton.gameObject.SetActive(GameManager.Instance.debugMode);
         }
+
+        // 隐藏工具提示
+        if (tooltipPanel != null)
+            tooltipPanel.SetActive(false);
     }
 
     void InitializeUI()
@@ -288,4 +299,42 @@ public class UIManager : MonoBehaviour
         GameManager.Instance.EndGame(false);
         ShowMessage("调试：直接失败", true);
     }
+
+    // ==================== 工具提示系统 ====================
+
+    // 显示工具提示
+    public void ShowTooltip(string title, string description, Vector3 position)
+    {
+        if (tooltipPanel == null || tooltipTitleText == null || tooltipDescriptionText == null)
+            return;
+
+        // 设置文本
+        tooltipTitleText.text = title;
+        tooltipDescriptionText.text = description;
+
+        // 设置位置（跟随鼠标）
+        RectTransform rectTransform = tooltipPanel.GetComponent<RectTransform>();
+        if (rectTransform != null)
+        {
+            Vector2 screenPoint = RectTransformUtility.WorldToScreenPoint(null, position);
+            rectTransform.anchoredPosition = new Vector2(
+                screenPoint.x + tooltipOffsetX,
+                screenPoint.y + tooltipOffsetY
+            );
+        }
+
+        // 显示面板
+        tooltipPanel.SetActive(true);
+    }
+
+    // 隐藏工具提示
+    public void HideTooltip()
+    {
+        if (tooltipPanel != null)
+        {
+            tooltipPanel.SetActive(false);
+        }
+    }
+
+
 }
